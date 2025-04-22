@@ -23,6 +23,7 @@ import {
   Tooltip
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import GetAppIcon from '@mui/icons-material/GetApp';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
@@ -239,6 +240,44 @@ const CSVUpload = () => {
     }));
   };
 
+  const handleExportToTxt = () => {
+    if (allData.length === 0) {
+      setError('No data to export');
+      return;
+    }
+  
+    try {
+      // Convert headers and data to text format
+      let txtContent = headers.join('\t') + '\n';
+      
+      // Add each row of data
+      allData.forEach(row => {
+        const rowValues = headers.map(header => row[header] || '');
+        txtContent += rowValues.join('\t') + '\n';
+      });
+      
+      // Create a blob with the text content
+      const blob = new Blob([txtContent], { type: 'text/plain' });
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName ? `${fileName.split('.')[0]}_export.txt` : 'data_export.txt';
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      setError('Failed to export data');
+    }
+  };
+
   return (
     <Card sx={{ 
       maxWidth: '100%', 
@@ -289,24 +328,34 @@ const CSVUpload = () => {
         ) : (
           <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">
-                {fileName} {loading && <CircularProgress size={20} sx={{ ml: 1 }} />}
-              </Typography>
-              <Box>
-                <Button
-                  startIcon={<AddIcon />}
-                  variant="contained"
-                  color="primary"
-                  sx={{ mr: 1 }}
-                  onClick={handleAddRowStart}
-                >
-                  Add Row
-                </Button>
-                <IconButton onClick={handleClearFile}>
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
-            </Box>
+                <Typography variant="h6">
+                    {fileName} {loading && <CircularProgress size={20} sx={{ ml: 1 }} />}
+                </Typography>
+                <Box>
+                    <Button
+                    startIcon={<GetAppIcon />}
+                    variant="outlined"
+                    color="primary"
+                    sx={{ mr: 1 }}
+                    onClick={handleExportToTxt}
+                    disabled={allData.length === 0}
+                    >
+                    Export TXT
+                    </Button>
+                    <Button
+                    startIcon={<AddIcon />}
+                    variant="contained"
+                    color="primary"
+                    sx={{ mr: 1 }}
+                    onClick={handleAddRowStart}
+                    >
+                    Add Row
+                    </Button>
+                    <IconButton onClick={handleClearFile}>
+                    <DeleteIcon />
+                    </IconButton>
+                </Box>
+                </Box>
             
             {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
