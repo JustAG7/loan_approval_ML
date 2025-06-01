@@ -45,27 +45,27 @@ def preprocess_data(data_row):
           # Numerical features - handle missing values with defaults
         processed_row['ApplicantIncome'] = safe_float(data_row.get('ApplicantIncome'), 0)
         processed_row['CoapplicantIncome'] = safe_float(data_row.get('CoapplicantIncome'), 0)
-        processed_row['LoanAmount'] = safe_float(data_row.get('LoanAmount'), 0.1)
+        processed_row['LoanAmount'] = safe_float(data_row.get('LoanAmount'), 0)
         processed_row['Loan_Amount_Term'] = safe_float(data_row.get('Loan_Amount_Term'), 0)
         processed_row['Credit_History'] = safe_float(data_row.get('Credit_History'), 0)
         
         # Apply square root transformation (as done in the notebook)
         # Add small epsilon to avoid sqrt of 0
-        processed_row['ApplicantIncome'] = np.sqrt(max(processed_row['ApplicantIncome'], 1000))
+        processed_row['ApplicantIncome'] = np.sqrt(max(processed_row['ApplicantIncome'], 0))
         processed_row['CoapplicantIncome'] = np.sqrt(max(processed_row['CoapplicantIncome'], 0))
-        processed_row['LoanAmount'] = np.sqrt(max(processed_row['LoanAmount'], 0))
+        processed_row['LoanAmount'] = np.sqrt(max(processed_row['LoanAmount'], 100))
           # Handle Dependents (one-hot encoding)
         dependents = str(data_row.get('Dependents', '0')).strip()
         if dependents in ['0', '1', '2', '3+']:
             processed_row[f'Dependents_{dependents}'] = 1
         else:
-            processed_row['Dependents_0'] = 1  # Default to 0 dependents
+            processed_row['Dependents_0'] = 1 
             
         property_area = str(data_row.get('Property_Area', 'Semiurban')).strip()
         if property_area in ['Rural', 'Semiurban', 'Urban']:
             processed_row[f'Property_Area_{property_area}'] = 1
         else:
-            processed_row['Property_Area_Semiurban'] = 0  # Default
+            processed_row['Property_Area_Semiurban'] = 1  
 
         gender = str(data_row.get('Gender', 'Male')).strip().lower()
         processed_row['Gender'] = 1 if gender == 'male' else 0
