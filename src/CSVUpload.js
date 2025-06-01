@@ -20,20 +20,22 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Tooltip
+  Tooltip,
+  Chip
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import GetAppIcon from '@mui/icons-material/GetApp';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
+import PredictIcon from '@mui/icons-material/Psychology';
+import DownloadIcon from '@mui/icons-material/FileDownload';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
+import axios from 'axios';
 
-const CSVUpload = () => {
-  const [file, setFile] = useState(null);
+const CSVUpload = () => {  const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [headers, setHeaders] = useState([]);
   const [data, setData] = useState([]);
@@ -42,6 +44,11 @@ const CSVUpload = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [, setFileType] = useState('');
+  
+  // Prediction state
+  const [predictions, setPredictions] = useState([]);
+  const [predicting, setPredicting] = useState(false);
+  const [showPredictions, setShowPredictions] = useState(false);
   
   // CRUD state
   const [editingIndex, setEditingIndex] = useState(null);
@@ -119,7 +126,6 @@ const CSVUpload = () => {
     });
     setNewRowData(emptyRow);
   };
-
   const handleClearFile = () => {
     setFile(null);
     setFileName('');
@@ -132,6 +138,8 @@ const CSVUpload = () => {
     setEditingData({});
     setShowAddDialog(false);
     setNewRowData({});
+    setPredictions([]);
+    setShowPredictions(false);
   };
 
   const handleShowMore = () => {
@@ -232,46 +240,95 @@ const CSVUpload = () => {
     });
     setNewRowData(emptyRow);
   };
-  
-  const handleAddFieldChange = (header, value) => {
+    const handleAddFieldChange = (header, value) => {
     setNewRowData(prev => ({
       ...prev,
       [header]: value
     }));
   };
 
-  const handleExportToTxt = () => {
+  // Prediction functions
+  const handlePredict = async () => {
+    if (allData.length === 0) {
+      setError('No data to predict');
+      return;
+    }
+
+    setPredicting(true);
+    setError('');
+
+    try {
+      const response = await axios.post('http://localhost:5000/predict', allData);
+      
+      if (response.data.predictions) {
+        setPredictions(response.data.predictions);
+        setShowPredictions(true);
+      } else {
+        setError('Invalid response from prediction service');
+      }
+    } catch (error) {
+      console.error('Prediction error:', error);
+      setError('Failed to get predictions. Make sure the backend server is running.');
+    } finally {
+      setPredicting(false);
+    }
+  };
+
+  const getDataWithPredictions = () => {
+    if (!showPredictions || predictions.length === 0) {
+      return allData;
+    }
+
+    return allData.map((row, index) => ({
+      ...row,
+      PredictionResult: predictions[index]?.prediction || 'N/A',
+      PredictionConfidence: predictions[index]?.confidence 
+        ? `${(predictions[index].confidence * 100).toFixed(1)}%` 
+        : 'N/A'
+    }));
+  };
+
+  const getHeadersWithPredictions = () => {
+    if (!showPredictions) {
+      return headers;
+    }
+    return [...headers, 'PredictionResult', 'PredictionConfidence'];
+  };
+
+  const getPredictionChip = (prediction) => {
+    if (prediction === 'Approved') {
+      return <Chip label="Approved" color="success" size="small" />;
+    } else if (prediction === 'Rejected') {
+      return <Chip label="Rejected" color="error" size="small" />;
+    } else {
+      return <Chip label="N/A" color="default" size="small" />;
+    }
+  };
+  const handleExportToExcel = () => {
     if (allData.length === 0) {
       setError('No data to export');
       return;
     }
   
     try {
-      // Convert headers and data to text format
-      let txtContent = headers.join('\t') + '\n';
+      const dataToExport = getDataWithPredictions();
+      const headersToExport = getHeadersWithPredictions();
       
-      // Add each row of data
-      allData.forEach(row => {
-        const rowValues = headers.map(header => row[header] || '');
-        txtContent += rowValues.join('\t') + '\n';
-      });
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(dataToExport, { header: headersToExport });
       
-      // Create a blob with the text content
-      const blob = new Blob([txtContent], { type: 'text/plain' });
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Loan Data');
       
-      // Create download link
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName ? `${fileName.split('.')[0]}_export.txt` : 'data_export.txt';
+      // Generate filename
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = fileName 
+        ? `${fileName.split('.')[0]}_with_predictions_${timestamp}.xlsx` 
+        : `loan_data_with_predictions_${timestamp}.xlsx`;
       
-      // Trigger download
-      document.body.appendChild(link);
-      link.click();
-      
-      // Clean up
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Download file
+      XLSX.writeFile(wb, filename);
     } catch (error) {
       console.error('Export failed:', error);
       setError('Failed to export data');
@@ -330,46 +387,65 @@ const CSVUpload = () => {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">
                     {fileName} {loading && <CircularProgress size={20} sx={{ ml: 1 }} />}
-                </Typography>
-                <Box>
+                </Typography>                <Box>
                     <Button
-                    startIcon={<GetAppIcon />}
-                    variant="outlined"
-                    color="primary"
-                    sx={{ mr: 1 }}
-                    onClick={handleExportToTxt}
-                    disabled={allData.length === 0}
+                        startIcon={<DownloadIcon />}
+                        variant="outlined"
+                        color="primary"
+                        sx={{ mr: 1 }}
+                        onClick={handleExportToExcel}
+                        disabled={allData.length === 0}
                     >
-                    Export TXT
+                        Export Excel
                     </Button>
                     <Button
-                    startIcon={<AddIcon />}
-                    variant="contained"
-                    color="primary"
-                    sx={{ mr: 1 }}
-                    onClick={handleAddRowStart}
+                        startIcon={<PredictIcon />}
+                        variant="contained"
+                        color="secondary"
+                        sx={{ mr: 1 }}
+                        onClick={handlePredict}
+                        disabled={allData.length === 0 || predicting}
                     >
-                    Add Row
+                        {predicting ? 'Predicting...' : 'Predict Loans'}
+                    </Button>
+                    <Button
+                        startIcon={<AddIcon />}
+                        variant="contained"
+                        color="primary"
+                        sx={{ mr: 1 }}
+                        onClick={handleAddRowStart}
+                    >
+                        Add Row
                     </Button>
                     <IconButton onClick={handleClearFile}>
-                    <DeleteIcon />
+                        <DeleteIcon />
                     </IconButton>
                 </Box>
                 </Box>
-            
-            {loading ? (
+              {loading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
                 <CircularProgress />
               </Box>
             ) : (
               <>
+                {predicting && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Making predictions... Please wait.
+                  </Alert>
+                )}
+                
+                {showPredictions && (
+                  <Alert severity="success" sx={{ mb: 2 }}>
+                    Predictions completed! Results are shown in the table and can be exported.
+                  </Alert>
+                )}
+
                 {headers.length > 0 && (
-                  <>
-                    <TableContainer component={Paper} sx={{ maxHeight: 500, mb: 2 }}>
+                  <>                    <TableContainer component={Paper} sx={{ maxHeight: 500, mb: 2 }}>
                       <Table stickyHeader size="small">
                         <TableHead>
                           <TableRow>
-                            {headers.map((header, index) => (
+                            {getHeadersWithPredictions().map((header, index) => (
                               <TableCell key={index} sx={{ fontWeight: 'bold' }}>
                                 {header}
                               </TableCell>
@@ -380,69 +456,83 @@ const CSVUpload = () => {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {data.map((row, rowIndex) => (
-                            <TableRow key={rowIndex} hover>
-                              {headers.map((header, colIndex) => (
-                                <TableCell key={`${rowIndex}-${colIndex}`}>
+                          {data.map((row, rowIndex) => {
+                            const rowWithPredictions = showPredictions && predictions[rowIndex] 
+                              ? {
+                                  ...row,
+                                  PredictionResult: predictions[rowIndex]?.prediction || 'N/A',
+                                  PredictionConfidence: predictions[rowIndex]?.confidence 
+                                    ? `${(predictions[rowIndex].confidence * 100).toFixed(1)}%` 
+                                    : 'N/A'
+                                }
+                              : row;
+
+                            return (
+                              <TableRow key={rowIndex} hover>
+                                {getHeadersWithPredictions().map((header, colIndex) => (
+                                  <TableCell key={`${rowIndex}-${colIndex}`}>
+                                    {editingIndex === rowIndex && !['PredictionResult', 'PredictionConfidence'].includes(header) ? (
+                                      <TextField
+                                        value={editingData[header] || ''}
+                                        onChange={(e) => handleEditFieldChange(header, e.target.value)}
+                                        size="small"
+                                        fullWidth
+                                      />
+                                    ) : header === 'PredictionResult' && showPredictions ? (
+                                      getPredictionChip(rowWithPredictions[header])
+                                    ) : (
+                                      rowWithPredictions[header]
+                                    )}
+                                  </TableCell>
+                                ))}
+                                <TableCell>
                                   {editingIndex === rowIndex ? (
-                                    <TextField
-                                      value={editingData[header] || ''}
-                                      onChange={(e) => handleEditFieldChange(header, e.target.value)}
-                                      size="small"
-                                      fullWidth
-                                    />
+                                    <>
+                                      <Tooltip title="Save">
+                                        <IconButton 
+                                          color="primary" 
+                                          size="small"
+                                          onClick={handleEditSave}
+                                        >
+                                          <SaveIcon />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Cancel">
+                                        <IconButton 
+                                          color="default" 
+                                          size="small"
+                                          onClick={handleEditCancel}
+                                        >
+                                          <CancelIcon />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </>
                                   ) : (
-                                    row[header]
+                                    <>
+                                      <Tooltip title="Edit">
+                                        <IconButton 
+                                          color="primary" 
+                                          size="small"
+                                          onClick={() => handleEditStart(rowIndex)}
+                                        >
+                                          <EditIcon />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Delete">
+                                        <IconButton 
+                                          color="error" 
+                                          size="small"
+                                          onClick={() => handleDeleteRow(rowIndex)}
+                                        >
+                                          <DeleteIcon />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </>
                                   )}
                                 </TableCell>
-                              ))}
-                              <TableCell>
-                                {editingIndex === rowIndex ? (
-                                  <>
-                                    <Tooltip title="Save">
-                                      <IconButton 
-                                        color="primary" 
-                                        size="small"
-                                        onClick={handleEditSave}
-                                      >
-                                        <SaveIcon />
-                                      </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Cancel">
-                                      <IconButton 
-                                        color="default" 
-                                        size="small"
-                                        onClick={handleEditCancel}
-                                      >
-                                        <CancelIcon />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Tooltip title="Edit">
-                                      <IconButton 
-                                        color="primary" 
-                                        size="small"
-                                        onClick={() => handleEditStart(rowIndex)}
-                                      >
-                                        <EditIcon />
-                                      </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Delete">
-                                      <IconButton 
-                                        color="error" 
-                                        size="small"
-                                        onClick={() => handleDeleteRow(rowIndex)}
-                                      >
-                                        <DeleteIcon />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </TableContainer>
