@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Load the model
-model_path = os.path.join(os.path.dirname(__file__), 'model.pkl')
+model_path = os.path.join(os.path.dirname(__file__), 'logistic_regression.pkl')
 try:
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
@@ -44,6 +44,7 @@ class LoanPredictorPreprocessor:
         """
         self.scaler_path = scaler_path
         self.scaler = None
+        self.labels = []
 
     def load_scaler(self):
         """Loads the pre-trained StandardScaler from the specified path."""
@@ -114,13 +115,34 @@ class LoanPredictorPreprocessor:
             elif dtype.startswith('int'):
                 # Convert to int, handling NaNs
                 loan_data[col] = pd.to_numeric(loan_data[col], errors='coerce').fillna(-1000).astype(int)
-        loan_data = loan_data.astype(COLUMN_TYPES, errors='ignore')
+        
+        # loan_data = loan_data.astype(COLUMN_TYPES, errors='ignore')
 
         if 'Loan_Status' in loan_data.columns:
+            self.labels = loan_data['Loan_Status']
             loan_data.drop(columns=['Loan_Status'], inplace=True)
 
         return loan_data
         
+    def training_metrics(self, predictions):
+        """
+        Calculates and prints the training metrics based on the predictions.
+
+        Args:
+            predictions (np.ndarray): The predicted labels as a NumPy array.
+        """
+        if self.labels is None:
+            print("No labels available for calculating metrics.")
+            return
+        
+        if len(predictions) != len(self.labels):
+            print("Error: Predictions and labels length mismatch.")
+            return
+
+        from sklearn.metrics import classification_report, accuracy_score
+        print("Classification Report:")
+        print(classification_report(self.labels, predictions))
+        print("Accuracy:", accuracy_score(self.labels, predictions))
 
     def preprocess(self, loan_data):
         """
@@ -154,6 +176,8 @@ class LoanPredictorPreprocessor:
             loan_data = loan_data.drop(['Loan_ID'], axis=1)
 
         # Handling Missing Values (using mode for categorical, mean for numerical)
+        # I CANT DROP ANY ROWS HERE, BECAUSE I AM INFERENCING
+        # loan_data.dropna(subset=['Credit_History'], inplace=True)  # Drop rows where Credit_History is NaN
         # Need to handle potential missing values for new data
         for col in ['Gender', 'Married', 'Dependents', 'Self_Employed', 'Credit_History']:
             if col in loan_data.columns and loan_data[col].isnull().any():
@@ -163,7 +187,6 @@ class LoanPredictorPreprocessor:
                 else:
                     # Handle case where mode is empty (e.g., all NaN)
                     print(f"Warning: Cannot fill missing values for {col} as mode is empty.")
-
 
         for col in ['LoanAmount', 'Loan_Amount_Term']:
              if col in loan_data.columns and loan_data[col].isnull().any():
@@ -180,16 +203,13 @@ class LoanPredictorPreprocessor:
 
         # Drop unneeded dummy features.
         # Ensure these columns exist before dropping
-        cols_to_drop_dummies = []
-        if 'Gender_Female' in loan_data.columns: 
-            cols_to_drop_dummies.extend(['Gender_Female', 'Gender_'])
-        if 'Married_No' in loan_data.columns: 
-            cols_to_drop_dummies.extend(['Married_No', 'Married_'])
-        if 'Education_Not Graduate' in loan_data.columns: cols_to_drop_dummies.append('Education_Not Graduate')
-        if 'Self_Employed_No' in loan_data.columns: 
-            cols_to_drop_dummies.extend(['Self_Employed_No', 'Self_Employed_'])
-        if 'Dependents_' in loan_data.columns:
-            cols_to_drop_dummies.append('Dependents_')
+        cols_to_drop_dummies = [
+            'Gender_Female', 'Gender_',
+            'Married_No', 'Married_',
+            'Education_Not Graduate',
+            'Self_Employed_No', 'Self_Employed_',
+            'Dependents_'
+        ]
         # We don't drop Loan_Status_N here if we are preprocessing for prediction
         # If loan_data contains the target variable, drop it later before scaling.
 
@@ -202,43 +222,11 @@ class LoanPredictorPreprocessor:
                            'Self_Employed_Yes': 'Self_Employed'} # Loan_Status_Y is the target, keep it if present
 
         loan_data.rename(columns=newColunmsNames, inplace=True)
+        loan_data['NoCoapplicant'] = loan_data['CoapplicantIncome'].apply(lambda x: 1 if x == 0 else 0)
 
-        # --- Handling Outliers ---
-        # This part from the original code seems to modify the dataframe in-place
-        # by filtering rows based on IQR. This might not be suitable for a
-        # general preprocessing function for new data where outliers should
-        # likely be handled differently (e.g., capping or transformation).
-        # For now, we will skip the outlier removal by filtering as it
-        # changes the number of samples, which is usually done on training data.
-        # If you need outlier handling, consider adding capping or transformation here.
-
-        # --- Data Preprocessing ---
-        # Separate features (X) if Loan_Status is present (for training/evaluation data)
-        # If Loan_Status is not present (for new data prediction), just use the whole dataframe
-        if 'Loan_Status_Y' in loan_data.columns:
-             # This is likely the training/evaluation case where you have the target
-             # We will return only the scaled features, assuming the target is handled separately
-             X = loan_data.drop(columns=['Loan_Status_Y'])
-        else:
-            # This is likely the prediction case for new data
-            X = loan_data.copy()
-        print(X.columns)
-
-        # Ensure consistent column order with the data the scaler was trained on
-        # This requires knowing the column order from the training data.
-        # A robust way is to save the list of columns after one-hot encoding
-        # and before scaling during the training phase and use that list here.
-        # For now, we'll assume the column order is consistent based on the get_dummies
-        # but this is a potential point of failure if the columns in new data differ.
-        # A better approach would be to save the columns list used for training X.
-
-        # Data Re-scaling and Normalizing the features
-        # Apply the loaded scaler
-        print(X)
-        # return X
         try:
-            X_scaled = self.scaler.transform(X)
-            return pd.DataFrame(X_scaled, columns=X.columns)
+            X = self.scaler.transform(loan_data)
+            return pd.DataFrame(X, columns=loan_data.columns)
         except Exception as e:
             print(f"Error during scaling: {e}")
             return None
@@ -261,76 +249,39 @@ def predict():
             return jsonify({'error': 'No data provided'}), 400
             
         # Handle both single row and multiple rows
-        if isinstance(data, list):
-            print("RECEIVED MULTIPLE ROWS")
-            predictions = []
-            processed_data = loan_preprocessor.preprocess(data)
-            # print("PROCESSED DATA:", processed_data.head())
-            preds = model.predict(processed_data)
-            probs = model.predict_proba(processed_data) if hasattr(model, 'predict_proba') else None
-            # print(f"FINISHED INFERENCE: {preds[:5]}, {probs[:5]}")
-            for i, row in enumerate(data):
-                if processed_data is None:
-                    predictions.append({'error': 'Error processing row'})
-                    continue
-                
-                prediction = preds[i]
-                prob = probs[i].max() if probs is not None else None
-                
-                result = {
-                    'prediction': 'Approved' if prediction == 0 else 'Rejected',
-                    'prediction_value': int(prediction),
-                    'confidence': float(prob) if prob is not None else None
-                }
-                predictions.append(result)
-            
-            '''
-            for row in data:
-                processed_row = loan_preprocessor.preprocess(row)
-                if processed_row is None:
-                    predictions.append({'error': 'Error processing row'})
-                    continue
-                      # Convert to DataFrame and make prediction
-                df = pd.DataFrame([processed_row])
-                
-                # Note: The model was trained on scaled data, but we can't recreate the exact scaler
-                # For now, predict without scaling to see if it works better
-                prediction = model.predict(df)[0]
-                probability = model.predict_proba(df)[0].max() if hasattr(model, 'predict_proba') else None
-                
-                result = {
-                    'prediction': 'Approved' if prediction == 1 else 'Rejected',
-                    'prediction_value': int(prediction),
-                    'confidence': float(probability) if probability else None
-                }
-                predictions.append(result)
-            '''
-            print(f"Predictions: {predictions}")
-            return jsonify({'predictions': predictions})
-        else:
-            processed_row = LoanPredictorPreprocessor.preprocess(data)
-            if processed_row is None:
-                return jsonify({'error': 'Error processing data'}), 400
-                
-            df = pd.DataFrame([processed_row])
-            
-            # Apply MinMax scaling
-            scaler = MinMaxScaler()
-            df_scaled = scaler.fit_transform(df)
-            
-            prediction = model.predict(df_scaled)[0]
-            probability = model.predict_proba(df_scaled)[0].max() if hasattr(model, 'predict_proba') else None
-            
-            print( f"Prediction: {prediction}, Probability: {probability}")
+        if not isinstance(data, list):
+            data = [data]
+        assert isinstance(data, list), "Data should be a list of dictionaries"
+        
+        predictions = []
+        processed_data = loan_preprocessor.preprocess(data)
+        print(processed_data.info())
 
+        if processed_data is None:
+            return jsonify({'error': 'Error processing data'}), 400
+        # print("PROCESSED DATA:", processed_data.head())
+        preds = model.predict(processed_data)
+        probs = model.predict_proba(processed_data) if hasattr(model, 'predict_proba') else None
+        # print(f"FINISHED INFERENCE: {preds[:5]}, {probs[:5]}")
+        for i, row in enumerate(data):
+            if processed_data is None:
+                predictions.append({'error': 'Error processing row'})
+                continue
+            
+            prediction = preds[i]
+            prob = probs[i].max() if probs is not None else None
+            
             result = {
                 'prediction': 'Approved' if prediction == 1 else 'Rejected',
                 'prediction_value': int(prediction),
-                'confidence': float(probability) if probability else None
+                'confidence': float(prob) if prob is not None else None
             }
-            
-            return jsonify(result)
-            
+            predictions.append(result)
+        print(f"Predictions: {predictions}")
+        return jsonify({
+            'predictions': predictions,
+            'training_metrics': loan_preprocessor.training_metrics(preds)
+            }), 200
     except Exception as e:
         print(f"Error in prediction: {e}")
         return jsonify({'error': str(e)}), 500
