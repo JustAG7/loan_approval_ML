@@ -43,16 +43,16 @@ def preprocess_data(data_row):
             except (ValueError, TypeError):
                 return default
           # Numerical features - handle missing values with defaults
-        processed_row['ApplicantIncome'] = safe_float(data_row.get('ApplicantIncome'), 0)
-        processed_row['CoapplicantIncome'] = safe_float(data_row.get('CoapplicantIncome'), 0)
-        processed_row['LoanAmount'] = safe_float(data_row.get('LoanAmount'), 0)
-        processed_row['Loan_Amount_Term'] = safe_float(data_row.get('Loan_Amount_Term'), 0)
-        processed_row['Credit_History'] = safe_float(data_row.get('Credit_History'), 0)
+        processed_row['ApplicantIncome'] = safe_float(data_row.get('ApplicantIncome'), 5000)
+        processed_row['CoapplicantIncome'] = safe_float(data_row.get('CoapplicantIncome'), 2200)
+        processed_row['LoanAmount'] = safe_float(data_row.get('LoanAmount'), 100)
+        processed_row['Loan_Amount_Term'] = safe_float(data_row.get('Loan_Amount_Term'), 360)
+        processed_row['Credit_History'] = safe_float(data_row.get('Credit_History'), 1.0)
         
         # Apply square root transformation (as done in the notebook)
         # Add small epsilon to avoid sqrt of 0
-        processed_row['ApplicantIncome'] = np.sqrt(max(processed_row['ApplicantIncome'], 0))
-        processed_row['CoapplicantIncome'] = np.sqrt(max(processed_row['CoapplicantIncome'], 0))
+        processed_row['ApplicantIncome'] = np.sqrt(max(processed_row['ApplicantIncome'], 5000))
+        processed_row['CoapplicantIncome'] = np.sqrt(max(processed_row['CoapplicantIncome'], 2200))
         processed_row['LoanAmount'] = np.sqrt(max(processed_row['LoanAmount'], 100))
           # Handle Dependents (one-hot encoding)
         dependents = str(data_row.get('Dependents', '0')).strip()
