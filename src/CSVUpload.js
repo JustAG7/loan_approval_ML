@@ -34,6 +34,7 @@ import DownloadIcon from '@mui/icons-material/FileDownload';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import axios from 'axios';
+import MetricsDisplay from './MetricsDisplay';
 
 const CSVUpload = () => {  const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -44,11 +45,11 @@ const CSVUpload = () => {  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [, setFileType] = useState('');
-  
-  // Prediction state
+    // Prediction state
   const [predictions, setPredictions] = useState([]);
   const [predicting, setPredicting] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
+  const [trainingMetrics, setTrainingMetrics] = useState(null);
   
   // CRUD state
   const [editingIndex, setEditingIndex] = useState(null);
@@ -125,8 +126,7 @@ const CSVUpload = () => {  const [file, setFile] = useState(null);
       emptyRow[header] = '';
     });
     setNewRowData(emptyRow);
-  };
-  const handleClearFile = () => {
+  };  const handleClearFile = () => {
     setFile(null);
     setFileName('');
     setHeaders([]);
@@ -140,6 +140,7 @@ const CSVUpload = () => {  const [file, setFile] = useState(null);
     setNewRowData({});
     setPredictions([]);
     setShowPredictions(false);
+    setTrainingMetrics(null);
   };
 
   const handleShowMore = () => {
@@ -246,7 +247,6 @@ const CSVUpload = () => {  const [file, setFile] = useState(null);
       [header]: value
     }));
   };
-
   // Prediction functions
   const handlePredict = async () => {
     if (allData.length === 0) {
@@ -263,6 +263,13 @@ const CSVUpload = () => {  const [file, setFile] = useState(null);
       if (response.data.predictions) {
         setPredictions(response.data.predictions);
         setShowPredictions(true);
+        
+        // Store training metrics if available
+        if (response.data.training_metrics) {
+          setTrainingMetrics(response.data.training_metrics);
+        } else {
+          setTrainingMetrics(null);
+        }
       } else {
         setError('Invalid response from prediction service');
       }
@@ -591,8 +598,12 @@ const CSVUpload = () => {  const [file, setFile] = useState(null);
                   Add Row
                 </Button>
               </DialogActions>
-            </Dialog>
-          </>
+            </Dialog>          </>
+        )}
+        
+        {/* Training Metrics Display */}
+        {trainingMetrics && (
+          <MetricsDisplay metrics={trainingMetrics} />
         )}
         
         {error && (

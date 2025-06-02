@@ -116,8 +116,7 @@ class LoanPredictorPreprocessor:
                 # Convert to int, handling NaNs
                 loan_data[col] = pd.to_numeric(loan_data[col], errors='coerce').fillna(-1000).astype(int)
         
-        # loan_data = loan_data.astype(COLUMN_TYPES, errors='ignore')
-
+        # loan_data = loan_data.astype(COLUMN_TYPES, errors='ignore')        
         if 'Loan_Status' in loan_data.columns:
             self.labels = loan_data['Loan_Status']
             loan_data.drop(columns=['Loan_Status'], inplace=True)
@@ -126,23 +125,50 @@ class LoanPredictorPreprocessor:
         
     def training_metrics(self, predictions):
         """
-        Calculates and prints the training metrics based on the predictions.
+        Calculates and returns the training metrics based on the predictions.
 
         Args:
             predictions (np.ndarray): The predicted labels as a NumPy array.
+            
+        Returns:
+            dict: Dictionary containing metrics data or None if no labels available
         """
         if self.labels is None:
             print("No labels available for calculating metrics.")
-            return
+            return None
         
         if len(predictions) != len(self.labels):
             print("Error: Predictions and labels length mismatch.")
-            return
+            return None
 
-        from sklearn.metrics import classification_report, accuracy_score
+        from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, precision_recall_fscore_support
+        
+        # Convert string labels to binary if needed
+        y_true = self.labels.map({'Y': 1, 'N': 0}) if self.labels.dtype == 'object' else self.labels
+        
+        # Calculate metrics
+        accuracy = accuracy_score(y_true, predictions)
+        cm = confusion_matrix(y_true, predictions)
+        precision, recall, f1, support = precision_recall_fscore_support(y_true, predictions, average='weighted')
+        
+        # Get class-wise metrics
+        class_report = classification_report(y_true, predictions, output_dict=True)
+        
+        metrics_data = {
+            'accuracy': float(accuracy),
+            'precision': float(precision),
+            'recall': float(recall),
+            'f1_score': float(f1),
+            'confusion_matrix': cm.tolist(),
+            'classification_report': class_report,
+            'has_labels': True
+        }
+        
         print("Classification Report:")
-        print(classification_report(self.labels, predictions))
-        print("Accuracy:", accuracy_score(self.labels, predictions))
+        print(classification_report(y_true, predictions))
+        print("Accuracy:", accuracy)
+        
+        return metrics_data
 
     def preprocess(self, loan_data):
         """
