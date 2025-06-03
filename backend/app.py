@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Load the model
-model_path = os.path.join(os.path.dirname(__file__), 'logistic_regression.pkl')
+model_path = os.path.join(os.path.dirname(__file__), 'xgboost.pkl')
 try:
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
